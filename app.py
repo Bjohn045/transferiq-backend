@@ -285,7 +285,7 @@ def parse_sidearm_page(html, player_name):
 
         # Find column indices dynamically from headers
         tpa_col = next((i for i,h in enumerate(headers) if h in ["3PTA","3PA"]), None)
-        to_col  = next((i for i,h in enumerate(headers) if h in ["TO","TOV"]), None)
+        to_col  = next((i for i,h in enumerate(headers) if h in ["TO","TOV","TURNOVERS","T/O"]), None)
 
         for row in table.find_all("tr"):
             row_text = row.get_text(" ", strip=True).lower()
