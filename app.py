@@ -276,11 +276,16 @@ def parse_sidearm_page(html, player_name):
     overall_tov = 0.0
 
     for table in tables:
-        headers_upper = " ".join(th.get_text(strip=True).upper() for th in table.find_all("th"))
+        headers = [th.get_text(strip=True).upper() for th in table.find_all("th")]
+        headers_upper = " ".join(headers)
         is_averages = ("FG%" in headers_upper and "REB" in headers_upper and
                        "FGM" not in headers_upper and "FGA" not in headers_upper and
                        "PTS" in headers_upper)
-        is_overall = ("FGM" in headers_upper and "3PTA" in headers_upper)
+        is_overall = ("FGM" in headers_upper and ("3PTA" in headers_upper or "3PA" in headers_upper))
+
+        # Find column indices dynamically from headers
+        tpa_col = next((i for i,h in enumerate(headers) if h in ["3PTA","3PA"]), None)
+        to_col  = next((i for i,h in enumerate(headers) if h in ["TO","TOV"]), None)
 
         for row in table.find_all("tr"):
             row_text = row.get_text(" ", strip=True).lower()
@@ -309,13 +314,14 @@ def parse_sidearm_page(html, player_name):
                         "min": round(mins,1), "games": int(gp)
                     }
 
-            if is_overall:
+            if is_overall and tpa_col is not None:
                 gp2 = safe_float(cells, 2) or 1
-                tpa_raw = safe_float(cells, 10)
-                to_raw  = safe_float(cells, 23)
+                tpa_raw = safe_float(cells, tpa_col)
+                to_raw  = safe_float(cells, to_col) if to_col else 0.0
                 if tpa_raw > 0:
                     overall_tpa = round(tpa_raw / gp2, 1)
                     overall_tov = round(to_raw  / gp2, 1)
+                    print(f"Overall: 3PA/G={overall_tpa} TO/G={overall_tov} (cols {tpa_col},{to_col})")
 
     if averages_stats:
         averages_stats["tpa"] = overall_tpa
@@ -382,7 +388,7 @@ def fetch_naia(player_name, school_name):
     except Exception as e: print(f"NAIA: {e}")
     return None, None, "Player not found on NAIA stats"
 
-def fetch_ncaa_school(player_name, school_name):
+def fetch_ncaa_school(player_name, school_name, season='2024-25'):
     domain = NCAA_DOMAINS.get(school_name)
     if not domain:
         for k,v in NCAA_DOMAINS.items():
@@ -393,18 +399,24 @@ def fetch_ncaa_school(player_name, school_name):
     # Try to fetch height from roster page simultaneously
     height_inches = fetch_height_from_roster(domain, player_name)
 
-    for url in [
-        f"https://{domain}/sports/mens-basketball/stats/2024-25",
-        f"https://{domain}/sports/mens-basketball/stats",
-        f"https://{domain}/sports/mbkb/stats/2024-25",
-        f"https://{domain}/sports/mbkb/2024-25/stats",
-    ]:
+    season_url = f"https://{domain}/sports/mens-basketball/stats/{season}"
+    fallback_url = f"https://{domain}/sports/mens-basketball/stats"
+
+    # Try season-specific URL first
+    for url in [season_url, fallback_url]:
         try:
             r = requests.get(url, headers=HEADERS, timeout=12)
             if r.status_code == 200:
                 s = parse_sidearm_page(r.text, player_name)
-                if s: return s, height_inches, None
-        except Exception as e: print(f"NCAA {url}: {e}")
+                if s:
+                    # Verify we got the right season by checking games make sense
+                    return s, height_inches, None
+                elif url == season_url:
+                    # Player not found in this specific season — stop here
+                    return None, height_inches, f"{player_name} not found in {season} stats — they may not have played that season"
+        except Exception as e:
+            print(f"NCAA {url}: {e}")
+            continue
     return None, height_inches, f"Could not load stats for {school_name} — enter manually"
 
 @app.route("/search", methods=["GET"])
@@ -414,12 +426,13 @@ def search():
     division = request.args.get("div","").strip().upper()
     if not player or not school:
         return jsonify({"error":"player and school required"}), 400
+    season = request.args.get("season", "2024-25").strip()
     if division == "JUCO":
         stats, height, error = fetch_njcaa(player, school)
     elif division == "NAIA":
         stats, height, error = fetch_naia(player, school)
     else:
-        stats, height, error = fetch_ncaa_school(player, school)
+        stats, height, error = fetch_ncaa_school(player, school, season)
     if not stats:
         return jsonify({"error":error or "Player not found","player":player,
                         "school":school,"manual_entry":True,"height":height}), 404
