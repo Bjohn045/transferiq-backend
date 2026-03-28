@@ -74,6 +74,7 @@ NCAA_DOMAINS = {
     "Trine": "trineathletics.com",
     "Wittenberg": "wittenbergathletics.com",
     "Pitt.-Greensburg": "pittgreensburgathletics.com",
+    "Dordt": "godordt.com",
 }
 
 # ─── NAIA slugs ───────────────────────────────────────────────────────────────
