@@ -610,11 +610,43 @@ def parse_roster(html, platform):
     """Parse all players from a stats page for the roster view."""
     soup = BeautifulSoup(html, 'html.parser')
     players = []
+    overall_data = {}  # name -> {tpa, tov}
 
+    # First pass: get totals from overall table for 3PA and TO
     for table in soup.find_all('table'):
         headers = [th.get_text(strip=True).upper() for th in table.find_all('th')]
         h_str = ' '.join(headers)
-        # Averages table only
+        is_overall = 'FGM' in h_str and ('3PTA' in h_str or '3PA' in h_str)
+        if not is_overall: continue
+
+        tpa_col = next((i for i,h in enumerate(headers) if h in ['3PTA','3PA']), None)
+        to_col  = next((i for i,h in enumerate(headers) if h in ['TO','TOV','TURNOVERS','T/O']), None)
+
+        for row in table.find_all('tr'):
+            cells = row.find_all('td')
+            if len(cells) < 8: continue
+            name_raw = cells[1].get_text(strip=True) if len(cells) > 1 else ''
+            name = re.sub(r'^\d+\s*', '', name_raw).strip()
+            if not name or len(name) < 3: continue
+            gp = safe_float(cells, 2) or 1
+            tpa_raw = safe_float(cells, tpa_col) if tpa_col else 0
+            to_raw = safe_float(cells, to_col) if to_col else 0
+            # Scan for TO if not found
+            if to_raw == 0:
+                for ci in range(max(0, len(cells)-10), len(cells)):
+                    v = safe_float(cells, ci)
+                    if 5 <= v <= gp * 8 and abs(v - round(v)) < 0.01:
+                        to_raw = v; break
+            overall_data[name.lower()] = {
+                'tpa': round(tpa_raw/gp, 1),
+                'tov': round(to_raw/gp, 1)
+            }
+        break
+
+    # Second pass: get per-game stats from averages table
+    for table in soup.find_all('table'):
+        headers = [th.get_text(strip=True).upper() for th in table.find_all('th')]
+        h_str = ' '.join(headers)
         is_avg = 'FG%' in h_str and 'REB' in h_str and 'FGM' not in h_str and 'PTS' in h_str
         if not is_avg: continue
 
@@ -623,7 +655,7 @@ def parse_roster(html, platform):
             if len(cells) < 8: continue
             name_raw = cells[1].get_text(strip=True) if len(cells) > 1 else ''
             name = re.sub(r'^\d+\s*', '', name_raw).strip()
-            if not name or name in ['Total', 'Opponents', 'Team'] or len(name) < 3: continue
+            if not name or name in ['Total','Opponents','Team'] or len(name) < 3: continue
             try:
                 gp   = safe_float(cells, 2) or 1
                 mins = safe_float(cells, 3)
@@ -636,13 +668,14 @@ def parse_roster(html, platform):
                 blk  = safe_float(cells, 12)
                 pts  = safe_float(cells, 13)
                 if mins < 5 or gp < 3: continue
+                extra = overall_data.get(name.lower(), {'tpa': 0.0, 'tov': 0.0})
                 players.append({
                     'name': name, 'games': int(gp),
-                    'fgp': fgp, 'tpa': 0.0, 'tpp': tpp, 'ftp': ftp,
+                    'fgp': fgp, 'tpa': extra['tpa'], 'tpp': tpp, 'ftp': ftp,
                     'reb': round(reb,1), 'pts': round(pts,1),
                     'ast': round(ast,1), 'stl': round(stl,1),
-                    'blk': round(blk,1), 'tov': 0.0, 'min': round(mins,1),
-                    'height': 72
+                    'blk': round(blk,1), 'tov': extra['tov'],
+                    'min': round(mins,1), 'height': 72
                 })
             except:
                 continue
