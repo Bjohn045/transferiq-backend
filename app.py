@@ -423,7 +423,7 @@ def fetch_ncaa_school(player_name, school_name, season='2024-25'):
 def roster():
     school   = request.args.get("school","").strip()
     division = request.args.get("div","").strip().upper()
-    season   = request.args.get("season","2024-25").strip()
+    season   = request.args.get("season","2025-26").strip()
     if not school:
         return jsonify({"error":"school required"}), 400
 
@@ -433,22 +433,29 @@ def roster():
             if school.lower() in k.lower() or k.lower() in school.lower():
                 domain=v; break
     if not domain:
-        return jsonify({"error":"School not in database — not supported yet","success":False}), 404
+        return jsonify({"error":f"School not in database","success":False}), 404
 
-    for url in [
-        f"https://{domain}/sports/mens-basketball/stats/{season}",
-        f"https://{domain}/sports/mens-basketball/stats",
-    ]:
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=12)
-            if r.status_code == 200:
-                players = parse_all_players(r.text)
-                if players:
-                    return jsonify({"success":True,"school":school,"players":players,"season":season})
-        except Exception as e:
-            print(f"Roster fetch error: {e}")
+    # Try current season first, then fall back to previous season
+    seasons_to_try = [season, "2024-25", "2025-26"]
+    seen = set()
+    for s in seasons_to_try:
+        if s in seen: continue
+        seen.add(s)
+        for url in [
+            f"https://{domain}/sports/mens-basketball/stats/{s}",
+            f"https://{domain}/sports/mens-basketball/stats",
+        ]:
+            try:
+                r = requests.get(url, headers=HEADERS, timeout=12)
+                if r.status_code == 200:
+                    players = parse_all_players(r.text)
+                    if players:
+                        return jsonify({"success":True,"school":school,"players":players,"season":s})
+            except Exception as e:
+                print(f"Roster fetch error {url}: {e}")
+                continue
 
-    return jsonify({"error":"Could not load roster","success":False}), 404
+    return jsonify({"error":f"Could not load roster for {school}","success":False}), 404
 
 def parse_all_players(html):
     """Parse all players from a Sidearm averages table."""
@@ -500,7 +507,7 @@ def search():
     division = request.args.get("div","").strip().upper()
     if not player or not school:
         return jsonify({"error":"player and school required"}), 400
-    season = request.args.get("season", "2024-25").strip()
+    season = request.args.get("season", "2025-26").strip()
     if division == "JUCO":
         stats, height, error = fetch_njcaa(player, school)
     elif division == "NAIA":
