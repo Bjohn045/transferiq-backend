@@ -627,6 +627,11 @@ def parse_roster(html, platform):
             if len(cells) < 8: continue
             name_raw = cells[1].get_text(strip=True) if len(cells) > 1 else ''
             name = re.sub(r'^\d+\s*', '', name_raw).strip()
+            dup_match2 = re.match(r'^(.+?)\d+$', name)
+            if dup_match2: name = dup_match2.group(1).strip()
+            if ',' in name:
+                parts = name.split(',', 1)
+                name = parts[1].strip() + ' ' + parts[0].strip()
             if not name or len(name) < 3: continue
             gp = safe_float(cells, 2) or 1
             tpa_raw = safe_float(cells, tpa_col) if tpa_col else 0
@@ -655,6 +660,13 @@ def parse_roster(html, platform):
             if len(cells) < 8: continue
             name_raw = cells[1].get_text(strip=True) if len(cells) > 1 else ''
             name = re.sub(r'^\d+\s*', '', name_raw).strip()
+            # Fix duplicate: "Richardson, Isaac23Richardson, Isaac" -> "Isaac Richardson"
+            dup = re.match(r'^(.+?)\d+\1$', name)
+            if dup: name = dup.group(1).strip()
+            # Convert "Last, First" to "First Last"
+            if ',' in name:
+                parts = name.split(',', 1)
+                name = parts[1].strip() + ' ' + parts[0].strip()
             if not name or name in ['Total','Opponents','Team'] or len(name) < 3: continue
             try:
                 gp   = safe_float(cells, 2) or 1
