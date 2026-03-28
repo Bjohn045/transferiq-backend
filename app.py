@@ -599,11 +599,64 @@ def roster():
                 platform = detect_platform(resp.text)
                 players = parse_roster(resp.text, platform)
                 if players:
+                    # Fetch heights from roster page for all players at once
+                    heights = fetch_all_heights(domain)
+                    for p in players:
+                        h = heights.get(p['name'].lower())
+                        if h: p['height'] = h
                     return jsonify({'success': True, 'school': school, 'players': players, 'season': s, 'platform': platform})
             except Exception as e:
                 print(f"Roster error: {e}")
 
     return jsonify({'success': False, 'error': f"Could not load roster for {school}"}), 404
+
+
+def fetch_all_heights(domain):
+    """Fetch heights for all players from the roster page at once."""
+    heights = {}
+    urls = [
+        f"https://{domain}/sports/mens-basketball/roster",
+        f"https://{domain}/sports/mbkb/roster",
+    ]
+    for url in urls:
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=10)
+            if resp.status_code != 200: continue
+            soup = BeautifulSoup(resp.text, 'html.parser')
+
+            # Sidearm: each player has a roster card with name and height
+            # Try structured blocks first
+            for block in soup.find_all(['li','article','div'], class_=re.compile(r'roster|player|athlete', re.I)):
+                block_text = block.get_text(' ', strip=True)
+                h = parse_height(block_text)
+                if not h: continue
+                # Find name in block - look for anchor text or heading
+                name_tag = block.find(['a','h3','h4','span'], class_=re.compile(r'name|title', re.I))
+                if not name_tag:
+                    name_tag = block.find('a')
+                if name_tag:
+                    name = name_tag.get_text(strip=True).lower()
+                    if name and len(name) > 3:
+                        heights[name] = h
+
+            # Fallback: scan table rows
+            if not heights:
+                for row in soup.find_all('tr'):
+                    cells = row.find_all('td')
+                    if len(cells) < 3: continue
+                    name = cells[0].get_text(strip=True) if cells else ''
+                    if not name or len(name) < 3: continue
+                    row_text = row.get_text(' ', strip=True)
+                    h = parse_height(row_text)
+                    if h:
+                        heights[name.lower()] = h
+
+            if heights:
+                print(f"Fetched {len(heights)} heights from {url}")
+                return heights
+        except Exception as e:
+            print(f"Height roster error: {e}")
+    return heights
 
 
 def parse_roster(html, platform):
