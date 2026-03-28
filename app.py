@@ -419,6 +419,80 @@ def fetch_ncaa_school(player_name, school_name, season='2024-25'):
             continue
     return None, height_inches, f"Could not load stats for {school_name} — enter manually"
 
+@app.route("/roster", methods=["GET"])
+def roster():
+    school   = request.args.get("school","").strip()
+    division = request.args.get("div","").strip().upper()
+    season   = request.args.get("season","2024-25").strip()
+    if not school:
+        return jsonify({"error":"school required"}), 400
+
+    domain = NCAA_DOMAINS.get(school)
+    if not domain:
+        for k,v in NCAA_DOMAINS.items():
+            if school.lower() in k.lower() or k.lower() in school.lower():
+                domain=v; break
+    if not domain:
+        return jsonify({"error":"School not in database — not supported yet","success":False}), 404
+
+    for url in [
+        f"https://{domain}/sports/mens-basketball/stats/{season}",
+        f"https://{domain}/sports/mens-basketball/stats",
+    ]:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=12)
+            if r.status_code == 200:
+                players = parse_all_players(r.text)
+                if players:
+                    return jsonify({"success":True,"school":school,"players":players,"season":season})
+        except Exception as e:
+            print(f"Roster fetch error: {e}")
+
+    return jsonify({"error":"Could not load roster","success":False}), 404
+
+def parse_all_players(html):
+    """Parse all players from a Sidearm averages table."""
+    soup = BeautifulSoup(html, "html.parser")
+    players = []
+    for table in soup.find_all("table"):
+        headers = [th.get_text(strip=True).upper() for th in table.find_all("th")]
+        headers_str = " ".join(headers)
+        is_averages = ("FG%" in headers_str and "REB" in headers_str and
+                       "FGM" not in headers_str and "PTS" in headers_str)
+        if not is_averages: continue
+        for row in table.find_all("tr"):
+            cells = row.find_all("td")
+            if len(cells) < 12: continue
+            name_cell = cells[1].get_text(strip=True)
+            if not name_cell or name_cell in ['Total','Opponents','Team']: continue
+            # Clean name - remove jersey number prefix if present
+            name = re.sub(r'^\d+\s*', '', name_cell).strip()
+            if not name or len(name) < 3: continue
+            try:
+                gp   = safe_float(cells, 2) or 1
+                mins = safe_float(cells, 3)
+                fgp  = pct(safe_float(cells, 4))
+                tpp  = pct(safe_float(cells, 5))
+                ftp  = pct(safe_float(cells, 6))
+                reb  = safe_float(cells, 9)
+                ast  = safe_float(cells, 10)
+                stl  = safe_float(cells, 11)
+                blk  = safe_float(cells, 12)
+                pts  = safe_float(cells, 13)
+                if mins < 5 or gp < 3: continue  # skip walk-ons / minimal players
+                players.append({
+                    "name": name, "games": int(gp),
+                    "fgp": fgp, "tpa": 0.0, "tpp": tpp, "ftp": ftp,
+                    "reb": round(reb,1), "pts": round(pts,1),
+                    "ast": round(ast,1), "stl": round(stl,1),
+                    "blk": round(blk,1), "tov": 0.0,
+                    "min": round(mins,1), "height": 72
+                })
+            except: continue
+        if players: break
+    # Sort by minutes per game descending
+    return sorted(players, key=lambda x: x['min'], reverse=True)
+
 @app.route("/search", methods=["GET"])
 def search():
     player   = request.args.get("player","").strip()
