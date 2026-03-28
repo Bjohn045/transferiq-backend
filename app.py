@@ -75,6 +75,11 @@ NCAA_DOMAINS = {
     "Wittenberg": "wittenbergathletics.com",
     "Pitt.-Greensburg": "pittgreensburgathletics.com",
     "Dordt": "godordt.com",
+    "Duke": "goduke.com",
+    "Arkansas": "arkansasrazorbacks.com",
+    "BYU": "byucougars.com",
+    "Michigan": "mgoblue.com",
+    "Purdue": "purduesports.com",
 }
 
 # ─── NAIA slugs ───────────────────────────────────────────────────────────────
@@ -191,7 +196,7 @@ def dedup(seq):
 
 # ─── ESPN D1 FETCHER ──────────────────────────────────────────────────────────
 def fetch_espn_stats(player_name, school_name, season):
-    """Fetch D1 player stats via ESPN hidden API. Returns (stats, height, error)."""
+    """Fetch D1 player stats via ESPN hidden API."""
     espn_id = ESPN_IDS.get(school_name)
     if not espn_id:
         for k, v in ESPN_IDS.items():
@@ -201,13 +206,20 @@ def fetch_espn_stats(player_name, school_name, season):
         return None, None, f"School not in ESPN database"
 
     try:
-        # Step 1: get roster to find player ID and height
-        roster_url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/{espn_id}/athletes"
+        # Get team roster with player IDs and heights
+        roster_url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/{espn_id}/roster"
         resp = requests.get(roster_url, headers=HEADERS, timeout=10)
         if resp.status_code != 200:
-            return None, None, "ESPN roster unavailable"
+            return None, None, f"ESPN roster unavailable (status {resp.status_code})"
 
-        athletes = resp.json().get('athletes', [])
+        data = resp.json()
+        # Roster response has 'athletes' array
+        athletes = data.get('athletes', [])
+        # Sometimes nested under position groups
+        if not athletes:
+            for group in data.get('coach', []):
+                athletes.extend(group.get('athletes', []))
+
         player_id = None
         height_inches = None
 
@@ -215,18 +227,28 @@ def fetch_espn_stats(player_name, school_name, season):
             full_name = athlete.get('fullName', '')
             if name_matches(full_name, player_name) or name_matches(player_name, full_name):
                 player_id = str(athlete.get('id', ''))
-                ht = athlete.get('height')
-                if ht:
-                    try: height_inches = int(round(float(ht)))
-                    except: pass
+                # ESPN height comes as display string like "6'5\""
+                ht_display = athlete.get('displayHeight', '')
+                if ht_display:
+                    height_inches = parse_height(ht_display)
+                # Also try numeric height in inches
+                if not height_inches:
+                    ht = athlete.get('height')
+                    if ht:
+                        try: height_inches = int(round(float(ht)))
+                        except: pass
                 break
 
         if not player_id:
-            return None, None, f"Player not found on ESPN roster"
+            return None, None, f"Player '{player_name}' not found on ESPN roster"
 
-        # Step 2: get player season stats
-        stats_url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/athletes/{player_id}/statistics"
+        # Get player season statistics
+        stats_url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/athletes/{player_id}/statistics/0"
         sresp = requests.get(stats_url, headers=HEADERS, timeout=10)
+        if sresp.status_code != 200:
+            # Try without the /0
+            stats_url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/athletes/{player_id}/statistics"
+            sresp = requests.get(stats_url, headers=HEADERS, timeout=10)
         if sresp.status_code != 200:
             return None, height_inches, "ESPN stats unavailable"
 
@@ -239,21 +261,18 @@ def fetch_espn_stats(player_name, school_name, season):
 
         gp = max(int(raw.get('gamesPlayed', 1)), 1)
 
-        def per_game(key):
-            return round(raw.get(key, 0) / gp, 1)
-
         result = {
             'games': gp,
             'fgp':  round(raw.get('fieldGoalPct', 0) * 100, 1),
             'tpa':  round(raw.get('threePointFieldGoalsAttempted', 0) / gp, 1),
             'tpp':  round(raw.get('threePointFieldGoalPct', 0) * 100, 1),
             'ftp':  round(raw.get('freeThrowPct', 0) * 100, 1),
-            'pts':  per_game('points'),
-            'reb':  per_game('totalRebounds'),
-            'ast':  per_game('assists'),
-            'stl':  per_game('steals'),
-            'blk':  per_game('blocks'),
-            'tov':  per_game('turnovers'),
+            'pts':  round(raw.get('points', 0) / gp, 1),
+            'reb':  round(raw.get('totalRebounds', 0) / gp, 1),
+            'ast':  round(raw.get('assists', 0) / gp, 1),
+            'stl':  round(raw.get('steals', 0) / gp, 1),
+            'blk':  round(raw.get('blocks', 0) / gp, 1),
+            'tov':  round(raw.get('turnovers', 0) / gp, 1),
             'min':  round(raw.get('minutesPerGame', 0), 1),
         }
         print(f"ESPN: {player_name} GP={gp} PTS={result['pts']} REB={result['reb']} TO/G={result['tov']}")
@@ -355,15 +374,15 @@ def parse_sidearm(html, player_name):
                 tpa_raw = safe_float(cells, tpa_col) if tpa_col is not None else 0.0
                 to_raw  = safe_float(cells, to_col)  if to_col  is not None else 0.0
 
-                # If TO not found via header, scan columns for a sensible value
+                # If TO not found via header, scan last 10 columns for total TOs
                 if to_raw == 0:
+                    gp2_int = max(int(gp2), 1)
                     for ci in range(max(0, len(cells)-10), len(cells)):
                         v = safe_float(cells, ci)
-                        # Must be a plausible total TO count: at least 1, at most 8/game
-                        if 1 <= v <= gp2 * 8:
-                            # Skip if it looks like rebounds (usually much higher) or assists
+                        # Plausible season total TOs: integer, between 5 and 8 per game
+                        if 5 <= v <= gp2_int * 8 and abs(v - round(v)) < 0.01:
                             to_raw = v
-                            print(f"TO found at col {ci}: {v} (GP={gp2})")
+                            print(f"TO total found at col {ci}: {v} -> {round(v/gp2,2)}/game")
                             break
 
                 if tpa_raw > 0 or to_raw > 0:
