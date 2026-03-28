@@ -246,23 +246,26 @@ def fetch_height_from_roster(domain, player_name):
             resp = requests.get(url, headers=HEADERS, timeout=10)
             if resp.status_code != 200: continue
             soup = BeautifulSoup(resp.text, "html.parser")
-            # Look for player name on roster page
-            parts = player_name.lower().split()
-            # Find all text blocks that contain the player name
-            for tag in soup.find_all(['tr','div','li','article']):
+            
+            for tag in soup.find_all(['tr','div','li','article','td','span','p']):
                 tag_text = tag.get_text(" ", strip=True).lower()
                 if not name_matches(tag_text, player_name): continue
-                # Look for height pattern in surrounding text
                 full_text = tag.get_text(" ", strip=True)
-                # Match patterns like 6'3", 6-3, 6 ft 3
-                height_match = re.search(r"(\d)'(\d{1,2})", full_text)
-                if height_match:
-                    feet = int(height_match.group(1))
-                    inches = int(height_match.group(2))
-                    total = feet * 12 + inches
-                    if 60 <= total <= 96:  # sanity check 5'0" to 8'0"
-                        print(f"Height found: {feet}'{inches}\" = {total} inches")
-                        return total
+                
+                # Match 6'5", 6'5, 6-5, 6 ft 5 patterns
+                for pattern in [
+                    r"(\d)['\u2019](\d{1,2})[\"\"]*",  # 6'5" or 6'5
+                    r"(\d)-(\d{1,2})\b",                 # 6-5
+                    r"(\d)\s+ft\.?\s+(\d{1,2})",         # 6 ft 5
+                ]:
+                    m = re.search(pattern, full_text)
+                    if m:
+                        feet = int(m.group(1))
+                        inches = int(m.group(2))
+                        total = feet * 12 + inches
+                        if 60 <= total <= 96:
+                            print(f"Height found: {feet}'{inches}\" = {total} inches")
+                            return total
         except Exception as e:
             print(f"Height fetch error: {e}")
     return None
@@ -285,7 +288,11 @@ def parse_sidearm_page(html, player_name):
 
         # Find column indices dynamically from headers
         tpa_col = next((i for i,h in enumerate(headers) if h in ["3PTA","3PA"]), None)
-        to_col  = next((i for i,h in enumerate(headers) if h in ["TO","TOV","TURNOVERS","T/O"]), None)
+        to_col  = next((i for i,h in enumerate(headers) if h in ["TO","TOV","TURNOVERS","T/O","TURN"]), None)
+        # Also try finding TO by position - it's typically after AST in overall table
+        if to_col is None and is_overall:
+            # BW layout: AST is at 22, TO is at 23
+            to_col = 23
 
         for row in table.find_all("tr"):
             row_text = row.get_text(" ", strip=True).lower()
