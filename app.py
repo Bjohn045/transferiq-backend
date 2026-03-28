@@ -733,7 +733,24 @@ def parse_roster(html, platform):
                 blk  = safe_float(cells, 12)
                 pts  = safe_float(cells, 13)
                 if mins < 5 or gp < 3: continue
-                extra = overall_data.get(name.lower(), {'tpa': 0.0, 'tov': 0.0})
+                extra = overall_data.get(name.lower())
+                # Try reverse "Last First" -> "First Last" if not found
+                if not extra:
+                    parts = name.split()
+                    if len(parts) >= 2:
+                        alt = (parts[-1] + ' ' + ' '.join(parts[:-1])).lower()
+                        extra = overall_data.get(alt)
+                if not extra:
+                    # Fuzzy: find any key that shares both first and last name
+                    nl = name.lower()
+                    for k in overall_data:
+                        kparts = k.split()
+                        nparts = nl.split()
+                        if len(kparts) >= 2 and len(nparts) >= 2:
+                            if kparts[0] in nl and kparts[-1] in nl:
+                                extra = overall_data[k]; break
+                if not extra:
+                    extra = {'tpa': 0.0, 'tov': 0.0}
                 players.append({
                     'name': name, 'games': int(gp),
                     'fgp': fgp, 'tpa': extra['tpa'], 'tpp': tpp, 'ftp': ftp,
