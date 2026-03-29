@@ -283,42 +283,19 @@ def fetch_espn_stats(player_name, school_name, season):
 
 # ─── HEIGHT FETCHER (Sidearm roster page) ─────────────────────────────────────
 def fetch_height_from_roster(domain, player_name):
-    """
-    Fetch player height from school roster page.
-    Works for both Sidearm and most other platforms.
-    Tries multiple URL patterns.
-    """
-    urls = [
-        f"https://{domain}/sports/mens-basketball/roster",
-        f"https://{domain}/sports/mbkb/roster",
-        f"https://{domain}/sports/mens-basketball/roster.aspx",
-    ]
-    for url in urls:
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=10)
-            if resp.status_code != 200: continue
-            soup = BeautifulSoup(resp.text, 'html.parser')
-
-            # Try structured blocks first (Sidearm uses li/article per player)
-            for block in soup.find_all(['li','article','div'], class_=re.compile(r'roster|player|athlete', re.I)):
-                block_text = block.get_text(' ', strip=True)
-                if not name_matches(block_text, player_name): continue
-                h = parse_height(block_text)
-                if h:
-                    print(f"Height found (block): {h} for {player_name}")
-                    return h
-
-            # Fallback: scan all rows/cells
-            for tag in soup.find_all(['tr','td','span','div','p','li']):
-                tag_text = tag.get_text(' ', strip=True)
-                if not name_matches(tag_text, player_name): continue
-                h = parse_height(tag_text)
-                if h:
-                    print(f"Height found (fallback): {h} for {player_name}")
-                    return h
-
-        except Exception as e:
-            print(f"Height fetch error ({url}): {e}")
+    """Fetch a single player's height from the roster page."""
+    # Use fetch_all_heights and look up the player
+    all_heights = fetch_all_heights(domain)
+    if all_heights:
+        # Try exact match
+        h = all_heights.get(player_name.lower())
+        if h: return h
+        # Try partial match
+        pl = player_name.lower()
+        for name, height in all_heights.items():
+            parts = pl.split()
+            if all(p in name for p in parts if len(p) > 1):
+                return height
     return None
 
 # ─── SIDEARM PARSER ───────────────────────────────────────────────────────────
@@ -612,11 +589,16 @@ def roster():
 
 
 def fetch_all_heights(domain):
-    """Fetch heights for all players from the roster page at once."""
+    """
+    Fetch heights for all players from the roster page.
+    Sidearm sites have a clean HTML table with No. | Name | Cl. | Pos. | Ht. | Wt. | Hometown
+    Height is in 'Ht.' column in format '6-5'.
+    """
     heights = {}
     urls = [
         f"https://{domain}/sports/mens-basketball/roster",
         f"https://{domain}/sports/mbkb/roster",
+        f"https://{domain}/sports/mens-basketball/roster.aspx",
     ]
     for url in urls:
         try:
@@ -624,38 +606,59 @@ def fetch_all_heights(domain):
             if resp.status_code != 200: continue
             soup = BeautifulSoup(resp.text, 'html.parser')
 
-            # Sidearm: each player has a roster card with name and height
-            # Try structured blocks first
-            for block in soup.find_all(['li','article','div'], class_=re.compile(r'roster|player|athlete', re.I)):
-                block_text = block.get_text(' ', strip=True)
-                h = parse_height(block_text)
-                if not h: continue
-                # Find name in block - look for anchor text or heading
-                name_tag = block.find(['a','h3','h4','span'], class_=re.compile(r'name|title', re.I))
-                if not name_tag:
-                    name_tag = block.find('a')
-                if name_tag:
-                    name = name_tag.get_text(strip=True).lower()
-                    if name and len(name) > 3:
-                        heights[name] = h
+            # Method 1: Find the roster table with Ht. column (most reliable for Sidearm)
+            for table in soup.find_all('table'):
+                headers_row = [th.get_text(strip=True).upper() for th in table.find_all('th')]
+                if 'HT.' not in headers_row and 'HT' not in headers_row and 'HEIGHT' not in headers_row:
+                    continue
+                ht_idx = next((i for i,h in enumerate(headers_row) if h in ['HT.','HT','HEIGHT']), None)
+                name_idx = next((i for i,h in enumerate(headers_row) if h in ['NAME','PLAYER']), None)
+                if ht_idx is None: continue
 
-            # Fallback: scan table rows
-            if not heights:
-                for row in soup.find_all('tr'):
+                for row in table.find_all('tr'):
                     cells = row.find_all('td')
-                    if len(cells) < 3: continue
-                    name = cells[0].get_text(strip=True) if cells else ''
-                    if not name or len(name) < 3: continue
-                    row_text = row.get_text(' ', strip=True)
-                    h = parse_height(row_text)
-                    if h:
+                    if len(cells) <= ht_idx: continue
+                    ht_text = cells[ht_idx].get_text(strip=True)
+                    h = parse_height(ht_text)
+                    if not h: continue
+                    # Get name - try name column first, then look for link
+                    name = ''
+                    if name_idx is not None:
+                        name = cells[name_idx].get_text(strip=True)
+                    if not name:
+                        # Find first link in row (usually player name)
+                        link = row.find('a')
+                        if link: name = link.get_text(strip=True)
+                    if not name:
+                        # Try second cell
+                        name = cells[1].get_text(strip=True) if len(cells) > 1 else ''
+                    name = name.strip()
+                    if name and len(name) > 2:
                         heights[name.lower()] = h
+                        print(f"Height table: {name} = {h}\"")
 
             if heights:
-                print(f"Fetched {len(heights)} heights from {url}")
+                print(f"Got {len(heights)} heights from table at {url}")
                 return heights
+
+            # Method 2: Fallback - scan player card blocks
+            for li in soup.find_all('li'):
+                text = li.get_text(' ', strip=True)
+                h = parse_height(text)
+                if not h: continue
+                link = li.find('a')
+                if link:
+                    name = link.get_text(strip=True).lower()
+                    if name and len(name) > 2:
+                        heights[name] = h
+
+            if heights:
+                print(f"Got {len(heights)} heights from cards at {url}")
+                return heights
+
         except Exception as e:
-            print(f"Height roster error: {e}")
+            print(f"Height fetch error ({url}): {e}")
+
     return heights
 
 
