@@ -71,7 +71,7 @@ NCAA_DOMAINS = {
     "Bluffton": "blufftonbeavers.com",
     "Chatham": "chathamathletics.com",
     "Hiram": "hiramsportes.com",
-    "Trine": "trineathletics.com",
+    "Trine": "trinethunder.com",
     "Wittenberg": "wittenbergathletics.com",
     "Pitt.-Greensburg": "pittgreensburgathletics.com",
     "Dordt": "godordt.com",
