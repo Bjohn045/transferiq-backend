@@ -740,7 +740,9 @@ def parse_roster(html, platform):
             if not name or name in ['Total','Opponents','Team'] or len(name) < 3: continue
             try:
                 gp   = safe_float(cells, 2) or 1
-                mins = safe_float(cells, 3)
+                mins_raw = safe_float(cells, 3)
+                # If mins_raw > 100, it's total minutes - divide by games
+                mins = round(mins_raw / gp, 1) if mins_raw > 100 else round(mins_raw, 1)
                 fgp  = pct(safe_float(cells, 4))
                 tpp  = pct(safe_float(cells, 5))
                 ftp  = pct(safe_float(cells, 6))
@@ -749,6 +751,12 @@ def parse_roster(html, platform):
                 stl  = safe_float(cells, 11)
                 blk  = safe_float(cells, 12)
                 pts  = safe_float(cells, 13)
+                # If pts > 50, likely total points - divide by games
+                if pts > 50: pts = round(pts / gp, 1)
+                if reb > 30: reb = round(reb / gp, 1)
+                if ast > 20: ast = round(ast / gp, 1)
+                if stl > 15: stl = round(stl / gp, 1)
+                if blk > 15: blk = round(blk / gp, 1)
                 if mins < 5 or gp < 3: continue
                 extra = overall_data.get(name.lower())
                 # Try reverse "Last First" -> "First Last" if not found
