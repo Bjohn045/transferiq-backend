@@ -692,14 +692,123 @@ def search():
     return jsonify({'success': False, 'error': f"Could not find stats for {player} at {school}. Stats may not be posted yet."}), 404
 
 
+# ─── ESPN D1 ROSTER FETCHER ───────────────────────────────────────────────────
+def fetch_espn_roster(school_name):
+    """Fetch full D1 roster with stats via ESPN API."""
+    espn_id = ESPN_IDS.get(school_name)
+    if not espn_id:
+        for k, v in ESPN_IDS.items():
+            if school_name.lower() in k.lower() or k.lower() in school_name.lower():
+                espn_id = v; break
+    if not espn_id:
+        return None, f"School not in ESPN database"
+
+    try:
+        # Step 1: Get roster (names, IDs, heights)
+        roster_url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/{espn_id}/roster"
+        resp = requests.get(roster_url, headers=HEADERS, timeout=10)
+        if resp.status_code != 200:
+            return None, f"ESPN roster unavailable (status {resp.status_code})"
+
+        data = resp.json()
+        athletes = data.get('athletes', [])
+        if not athletes:
+            for group in data.get('coach', []):
+                athletes.extend(group.get('athletes', []))
+
+        if not athletes:
+            return None, "No athletes found on ESPN roster"
+
+        players = []
+        for athlete in athletes:
+            player_id = str(athlete.get('id', ''))
+            full_name = athlete.get('fullName', '') or athlete.get('displayName', '')
+            if not full_name or not player_id:
+                continue
+
+            # Parse height
+            height_inches = 72
+            ht_display = athlete.get('displayHeight', '')
+            if ht_display:
+                h = parse_height(ht_display)
+                if h: height_inches = h
+            elif athlete.get('height'):
+                try: height_inches = int(round(float(athlete['height'])))
+                except: pass
+
+            # Step 2: Get stats for this player
+            try:
+                stats_url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/athletes/{player_id}/statistics/0"
+                sresp = requests.get(stats_url, headers=HEADERS, timeout=8)
+                if sresp.status_code != 200:
+                    stats_url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/athletes/{player_id}/statistics"
+                    sresp = requests.get(stats_url, headers=HEADERS, timeout=8)
+                if sresp.status_code != 200:
+                    continue
+
+                sdata = sresp.json()
+                cats = sdata.get('splits', {}).get('categories', [])
+                raw = {}
+                for cat in cats:
+                    for stat in cat.get('stats', []):
+                        raw[stat.get('name', '')] = stat.get('value', 0)
+
+                gp = max(int(raw.get('gamesPlayed', 0)), 1)
+                if gp < 3:
+                    continue  # skip players with very few games
+
+                min_pg = round(raw.get('minutesPerGame', 0), 1)
+                if min_pg < 5:
+                    continue  # skip bench players with minimal minutes
+
+                players.append({
+                    'name': full_name,
+                    'games': gp,
+                    'fgp':  round(raw.get('fieldGoalPct', 0) * 100, 1),
+                    'tpa':  round(raw.get('threePointFieldGoalsAttempted', 0) / gp, 1),
+                    'tpp':  round(raw.get('threePointFieldGoalPct', 0) * 100, 1),
+                    'ftp':  round(raw.get('freeThrowPct', 0) * 100, 1),
+                    'pts':  round(raw.get('points', 0) / gp, 1),
+                    'reb':  round(raw.get('totalRebounds', 0) / gp, 1),
+                    'ast':  round(raw.get('assists', 0) / gp, 1),
+                    'stl':  round(raw.get('steals', 0) / gp, 1),
+                    'blk':  round(raw.get('blocks', 0) / gp, 1),
+                    'tov':  round(raw.get('turnovers', 0) / gp, 1),
+                    'min':  min_pg,
+                    'height': height_inches,
+                })
+                print(f"ESPN roster: {full_name} GP={gp} PTS={round(raw.get('points',0)/gp,1)} MIN={min_pg}")
+
+            except Exception as e:
+                print(f"ESPN stats error for {full_name}: {e}")
+                continue
+
+        if not players:
+            return None, "No player stats found — season may not have started yet"
+
+        return sorted(players, key=lambda x: x['min'], reverse=True), None
+
+    except Exception as e:
+        return None, f"ESPN error: {e}"
+
+
 # ─── /roster ENDPOINT ─────────────────────────────────────────────────────────
 @app.route('/roster', methods=['GET'])
 def roster():
     school  = request.args.get('school', '').strip()
+    division = request.args.get('div', '').strip().upper()
     season  = request.args.get('season', '2025-26').strip()
 
     if not school:
         return jsonify({'error': 'school required'}), 400
+
+    # ── D1 → ESPN API ─────────────────────────────────────────────────────────
+    if division == 'D1':
+        players, err = fetch_espn_roster(school)
+        if players:
+            return jsonify({'success': True, 'school': school, 'players': players, 'season': season, 'platform': 'espn'})
+        print(f"ESPN roster failed ({err}), trying domain fallback")
+        # Fall through to domain-based lookup for D1 schools that have Sidearm sites
 
     domain = NCAA_DOMAINS.get(school)
     if not domain:
@@ -712,6 +821,8 @@ def roster():
             print(f"Auto-guessed domain for {school}: {domain}")
             NCAA_DOMAINS[school] = domain
     if not domain:
+        if division == 'D1':
+            return jsonify({'success': False, 'error': f"Could not load D1 roster for {school} — ESPN stats may not be available yet this season"}), 404
         return jsonify({'success': False, 'error': f"School '{school}' not in database yet"}), 404
 
     for s in dedup([season, '2025-26', '2024-25']):
@@ -725,7 +836,6 @@ def roster():
                 platform = detect_platform(resp.text)
                 players = parse_roster(resp.text, platform)
                 if players:
-                    # Fetch heights from roster page for all players at once
                     heights = fetch_all_heights(domain)
                     for p in players:
                         h = heights.get(p['name'].lower())
