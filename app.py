@@ -453,6 +453,53 @@ def parse_presto(html, player_name):
                 continue
     return None
 
+def guess_domain(school_name):
+    """
+    Try common URL patterns to find a school's athletics website.
+    Returns the working domain or None.
+    Most schools use Sidearm which has consistent URL structure.
+    """
+    # Clean school name for URL guessing
+    name = school_name.lower()
+    name = re.sub(r'[^a-z0-9\s]', '', name)  # remove special chars
+    name = name.strip()
+    
+    # Build slug variants
+    slug = name.replace(' ', '')           # baldwinwallace
+    slug2 = name.replace(' ', '-')        # baldwin-wallace  
+    words = name.split()
+    first = words[0] if words else ''
+    abbrev = ''.join(w[0] for w in words) # bw
+
+    # Common patterns - ordered by likelihood
+    candidates = [
+        f"go{slug}.com",
+        f"{slug}athletics.com",
+        f"{slug}sports.com",
+        f"{slug}.com",
+        f"{slug2}.com",
+        f"go{slug2}.com",
+        f"{first}athletics.com",
+        f"go{first}.com",
+    ]
+
+    # Test each candidate for Sidearm basketball stats page
+    test_path = "/sports/mens-basketball/stats"
+    for candidate in candidates:
+        try:
+            url = f"https://{candidate}{test_path}"
+            resp = requests.get(url, headers=HEADERS, timeout=6)
+            if resp.status_code == 200 and len(resp.text) > 5000:
+                platform = detect_platform(resp.text)
+                if platform in ['sidearm', 'presto']:
+                    print(f"Found domain: {candidate} ({platform})")
+                    return candidate
+        except:
+            continue
+    
+    return None
+
+
 # ─── MAIN /search ENDPOINT ────────────────────────────────────────────────────
 @app.route('/search', methods=['GET'])
 def search():
@@ -522,7 +569,12 @@ def search():
                 domain = v; break
 
     if not domain:
-        return jsonify({'success': False, 'error': f"School '{school}' not in database yet. Contact support to add it."}), 404
+        # Auto-guess domain from school name
+        domain = guess_domain(school)
+        if domain:
+            print(f"Auto-guessed domain for {school}: {domain}")
+            # Save it for future use
+            NCAA_DOMAINS[school] = domain
 
     for s in dedup([season, '2025-26', '2024-25']):
         for url in [
@@ -576,6 +628,11 @@ def roster():
         for k, v in NCAA_DOMAINS.items():
             if school.lower() in k.lower() or k.lower() in school.lower():
                 domain = v; break
+    if not domain:
+        domain = guess_domain(school)
+        if domain:
+            print(f"Auto-guessed domain for {school}: {domain}")
+            NCAA_DOMAINS[school] = domain
     if not domain:
         return jsonify({'success': False, 'error': f"School '{school}' not in database yet"}), 404
 
