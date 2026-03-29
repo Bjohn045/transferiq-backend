@@ -51,8 +51,8 @@ ESPN_IDS = {
 
 # ─── D2/D3 School domains ──────────────────────────────────────────────────────
 NCAA_DOMAINS = {
+    # ── Ohio Athletic Conference (OAC) D3 ─────────────────────────────────────
     "Baldwin Wallace": "bwyellowjackets.com",
-    "Wisconsin-Platteville": "letsgopioneers.com",
     "Mount Union": "mountunionathletics.com",
     "Otterbein": "otterbeincardinals.com",
     "Ohio Northern": "onuathletics.com",
@@ -61,16 +61,104 @@ NCAA_DOMAINS = {
     "Heidelberg": "bergathletics.com",
     "John Carroll": "jcusports.com",
     "Capital": "capitalcrusaders.com",
-    "Wilmington (OH)": "wilmingtonathletics.com",
+    "Wilmington (OH)": "wilmingtonquakers.com",
     "Kenyon": "kenyonlords.com",
     "Ohio Wesleyan": "owuathletics.com",
-    "Emory": "emoryeagles.com",
-    "Wheaton (IL)": "wheatoncollegeathletics.com",
-    "Calvin": "calvinknight.com",
-    "Illinois Wesleyan": "iwuathletics.com",
+    "Hiram": "hiramsports.com",
+
+    # ── ODAC D3 ───────────────────────────────────────────────────────────────
+    "Guilford": "guilfordquakers.com",
     "Virginia Wesleyan": "vwcmarlins.com",
     "Hood": "hoodathletics.com",
+    "Roanoke": "roanokemaroons.com",
+    "Lynchburg": "lynchburghornets.com",
+    "Bridgewater (VA)": "bceagles.com",
+    "Eastern Mennonite": "emiroyals.com",
+    "Shenandoah": "shenaventure.com",
+    "Averett": "averettcougars.com",
+    "Randolph-Macon": "rmcathletics.com",
+    "Washington & Lee": "generalssports.com",
+    "Hampden-Sydney": "hsctrojans.com",
+
+    # ── NACC / Heartland D3 ───────────────────────────────────────────────────
+    "Franklin": "franklingrizzlies.com",
+    "Bluffton": "blufftonbeavers.com",
+    "Trine": "trinethunder.com",
+    "Manchester": "manchesterathletics.com",
+    "Hanover": "hanovercollegepanthers.com",
+    "Anderson (IN)": "andersonravens.com",
+
+    # ── MIAC D3 ───────────────────────────────────────────────────────────────
+    "St. John's (MN)": "gojohnnies.com",
+    "Gustavus Adolphus": "gustavusathletics.com",
+    "Concordia-Moorhead": "concordiathorns.com",
+    "Bethel (MN)": "bethelroyals.com",
+    "Hamline": "hamlineathletics.com",
+    "Augsburg": "augsburgathletics.com",
+    "Carleton": "carletonknights.com",
+    "Macalester": "macathletics.com",
+    "Saint Olaf": "gooles.com",
+
+    # ── CCIW D3 ───────────────────────────────────────────────────────────────
+    "Wheaton (IL)": "wheatoncollegeathletics.com",
+    "Illinois Wesleyan": "iwuathletics.com",
+    "North Central (IL)": "northcentralcardinals.com",
+    "Millikin": "millikinbigblue.com",
+    "Elmhurst": "elmhurstbluejays.com",
+    "Carthage": "carthageathletics.com",
+    "Augustana (IL)": "augieathletics.com",
+
+    # ── UAA D3 ────────────────────────────────────────────────────────────────
+    "Emory": "emoryeagles.com",
+    "Washington U. in St. Louis": "wustlbears.com",
+    "Carnegie Mellon": "tartans.cmu.edu",
+    "Case Western Reserve": "athletics.case.edu",
+    "University of Chicago": "ucathletics.com",
+    "Brandeis": "brandeisathletics.com",
+    "Rochester": "urathletics.com",
+    "New York University": "nyugathletics.com",
+
+    # ── NESCAC D3 ─────────────────────────────────────────────────────────────
+    "Amherst": "amherstathletics.com",
+    "Williams": "ephsports.com",
+    "Middlebury": "middleburyathletics.com",
+    "Bowdoin": "bowdoinpolarbears.com",
+    "Colby": "colbyathletics.com",
+    "Bates": "gobatesbobcats.com",
+    "Trinity (CT)": "trinityathletics.com",
+    "Wesleyan": "wesleyanathletics.com",
+    "Hamilton": "hamiltonathletics.com",
+    "Tufts": "gotuftsjumbos.com",
+
+    # ── SCIAC D3 ──────────────────────────────────────────────────────────────
+    "Pomona-Pitzer": "sagehens.com",
+    "Claremont-Mudd-Scripps": "cmsathletics.org",
+    "Redlands": "bulldogsathletics.com",
+    "Occidental": "oxyathletics.com",
+    "Cal Lutheran": "clusports.com",
+    "Whittier": "poets.edu",
+    "La Verne": "laverne.edu",
+
+    # ── Wisconsin D3 ──────────────────────────────────────────────────────────
+    "Wisconsin-Platteville": "letsgopioneers.com",
     "Wisconsin-La Crosse": "uwlathletics.com",
+    "Wisconsin-Whitewater": "uwwathletics.com",
+    "Wisconsin-Oshkosh": "uwoshathletics.com",
+    "Wisconsin-Stevens Point": "uwsppointers.com",
+    "Wisconsin-Eau Claire": "blugolds.com",
+    "Wisconsin-River Falls": "uwrfathletics.com",
+    "Wisconsin-Stout": "uwstout.edu",
+    "Wisconsin Lutheran": "wlcathletics.com",
+
+    # ── Great Plains / Nebraska ───────────────────────────────────────────────
+    "Nebraska Wesleyan": "nwusports.com",
+    "Dordt": "godordt.com",
+
+    # ── CSAC / PA D3 ─────────────────────────────────────────────────────────
+    "Chatham": "chathamathletics.com",
+    "Pitt.-Greensburg": "pittgreensburgathletics.com",
+
+    # ── D2 schools ────────────────────────────────────────────────────────────
     "Washburn": "washburnichabods.com",
     "Northwest Missouri State": "nwmobearcat.com",
     "Ferris State": "ferrissports.com",
@@ -80,13 +168,8 @@ NCAA_DOMAINS = {
     "Michigan Tech": "michigantechathletics.com",
     "Gannon": "gannonknight.com",
     "Black Hills State": "yellowjacketathletics.com",
-    "Bluffton": "blufftonbeavers.com",
-    "Chatham": "chathamathletics.com",
-    "Hiram": "hiramsportes.com",
-    "Trine": "trinethunder.com",
-    "Wittenberg": "wittenbergathletics.com",
-    "Pitt.-Greensburg": "pittgreensburgathletics.com",
-    "Dordt": "godordt.com",
+
+    # ── D1 schools (fallback if ESPN fails) ───────────────────────────────────
     "Miami (OH)": "miamiredhawks.com",
     "Miami Ohio": "miamiredhawks.com",
     "Duke": "goduke.com",
