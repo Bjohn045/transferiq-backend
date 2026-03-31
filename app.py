@@ -413,7 +413,7 @@ def parse_sidearm(html, player_name):
 
         tpa_col = next((i for i, h in enumerate(headers) if h in ['3PTA', '3PA']), None)
         to_col  = next((i for i, h in enumerate(headers) if h in ['TO', 'TOV', 'TURNOVERS', 'T/O', 'TURN']), None)
-        fta_col = next((i for i, h in enumerate(headers) if h in ['FTA']), None)
+        fta_col = next((i for i, h in enumerate(headers) if h in ['FTA', 'FT-A', 'FTATT', 'FT ATT', 'FTA/G']), None)
 
         for row in table.find_all('tr'):
             row_text = row.get_text(' ', strip=True).lower()
@@ -432,11 +432,13 @@ def parse_sidearm(html, player_name):
                 stl  = safe_float(cells, 11)
                 blk  = safe_float(cells, 12)
                 pts  = safe_float(cells, 13)
+                # Try to get FTA/G directly from averages table if column exists
+                avg_fta = safe_float(cells, fta_col) if fta_col is not None else 0.0
                 if pts > 0 or reb > 0:
                     print(f"Sidearm avg row: GP={gp} PTS={pts} REB={reb} FG%={fgp} MIN={mins}")
                     averages_stats = {
                         'games': int(gp), 'fgp': fgp, 'tpa': 0.0, 'tpp': tpp,
-                        'fta': 0.0, 'ftp': ftp, 'reb': round(reb,1), 'pts': round(pts,1),
+                        'fta': round(avg_fta, 1), 'ftp': ftp, 'reb': round(reb,1), 'pts': round(pts,1),
                         'ast': round(ast,1), 'stl': round(stl,1),
                         'blk': round(blk,1), 'tov': 0.0, 'min': round(mins,1)
                     }
@@ -464,6 +466,16 @@ def parse_sidearm(html, player_name):
                 fta_raw = safe_float(cells, fta_col) if fta_col is not None else 0.0
                 if fta_raw > 0:
                     overall_fta = round(fta_raw / gp2, 1)
+                # Fallback: scan overall table for FTA as total between 0 and gp2*15
+                if overall_fta == 0.0 and fta_col is None:
+                    for ci in range(max(0, len(cells)-15), len(cells)):
+                        v = safe_float(cells, ci)
+                        if 1 <= v <= gp2 * 15 and abs(v - round(v)) < 0.01:
+                            candidate_fta_pg = round(v / gp2, 1)
+                            if 0.5 <= candidate_fta_pg <= 12:
+                                overall_fta = candidate_fta_pg
+                                print(f"FTA fallback found at col {ci}: {v} -> {overall_fta}/game")
+                                break
 
     if averages_stats:
         averages_stats['tpa'] = overall_tpa
@@ -946,7 +958,7 @@ def parse_roster(html, platform):
 
         tpa_col = next((i for i,h in enumerate(headers) if h in ['3PTA','3PA']), None)
         to_col  = next((i for i,h in enumerate(headers) if h in ['TO','TOV','TURNOVERS','T/O']), None)
-        fta_col = next((i for i,h in enumerate(headers) if h in ['FTA']), None)
+        fta_col = next((i for i,h in enumerate(headers) if h in ['FTA', 'FT-A', 'FTATT', 'FT ATT']), None)
 
         for row in table.find_all('tr'):
             cells = row.find_all('td')
