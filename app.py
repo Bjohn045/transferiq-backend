@@ -358,6 +358,7 @@ def fetch_espn_stats(player_name, school_name, season):
             'fgp':  round(raw.get('fieldGoalPct', 0) * 100, 1),
             'tpa':  round(raw.get('threePointFieldGoalsAttempted', 0) / gp, 1),
             'tpp':  round(raw.get('threePointFieldGoalPct', 0) * 100, 1),
+            'fta':  round(raw.get('freeThrowsAttempted', 0) / gp, 1),
             'ftp':  round(raw.get('freeThrowPct', 0) * 100, 1),
             'pts':  round(raw.get('points', 0) / gp, 1),
             'reb':  round(raw.get('totalRebounds', 0) / gp, 1),
@@ -401,6 +402,7 @@ def parse_sidearm(html, player_name):
     averages_stats = None
     overall_tpa = 0.0
     overall_tov = 0.0
+    overall_fta = 0.0
 
     for table in soup.find_all('table'):
         headers = [th.get_text(strip=True).upper() for th in table.find_all('th')]
@@ -411,6 +413,7 @@ def parse_sidearm(html, player_name):
 
         tpa_col = next((i for i, h in enumerate(headers) if h in ['3PTA', '3PA']), None)
         to_col  = next((i for i, h in enumerate(headers) if h in ['TO', 'TOV', 'TURNOVERS', 'T/O', 'TURN']), None)
+        fta_col = next((i for i, h in enumerate(headers) if h in ['FTA']), None)
 
         for row in table.find_all('tr'):
             row_text = row.get_text(' ', strip=True).lower()
@@ -433,7 +436,7 @@ def parse_sidearm(html, player_name):
                     print(f"Sidearm avg row: GP={gp} PTS={pts} REB={reb} FG%={fgp} MIN={mins}")
                     averages_stats = {
                         'games': int(gp), 'fgp': fgp, 'tpa': 0.0, 'tpp': tpp,
-                        'ftp': ftp, 'reb': round(reb,1), 'pts': round(pts,1),
+                        'fta': 0.0, 'ftp': ftp, 'reb': round(reb,1), 'pts': round(pts,1),
                         'ast': round(ast,1), 'stl': round(stl,1),
                         'blk': round(blk,1), 'tov': 0.0, 'min': round(mins,1)
                     }
@@ -458,10 +461,14 @@ def parse_sidearm(html, player_name):
                     overall_tpa = round(tpa_raw / gp2, 1)
                     overall_tov = round(to_raw  / gp2, 1)
                     print(f"Sidearm overall: 3PA/G={overall_tpa} TO/G={overall_tov}")
+                fta_raw = safe_float(cells, fta_col) if fta_col is not None else 0.0
+                if fta_raw > 0:
+                    overall_fta = round(fta_raw / gp2, 1)
 
     if averages_stats:
         averages_stats['tpa'] = overall_tpa
         averages_stats['tov'] = overall_tov
+        averages_stats['fta'] = overall_fta
         return averages_stats
     return None
 
@@ -508,6 +515,8 @@ def parse_presto(html, player_name):
                 tpa_total = safe_float(cells, col.get('3PA', 8))
                 tpa = round(tpa_total / gp, 1)
                 tpp = pct(safe_float(cells, col.get('3P%', 9)))
+                fta_total = safe_float(cells, col.get('FTA', 11))
+                fta = round(fta_total / gp, 1)
                 ftp = pct(safe_float(cells, col.get('FT%', 12)))
                 reb = safe_float(cells, col.get('REB', 15))
                 ast = safe_float(cells, col.get('AST', 16))
@@ -522,7 +531,7 @@ def parse_presto(html, player_name):
                 print(f"Presto: GP={gp} PTS={pts} REB={reb} TO/G={tov} 3PA/G={tpa}")
                 return {
                     'games': int(gp), 'fgp': fgp, 'tpa': tpa, 'tpp': tpp,
-                    'ftp': ftp, 'reb': round(reb,1), 'pts': round(pts,1),
+                    'fta': fta, 'ftp': ftp, 'reb': round(reb,1), 'pts': round(pts,1),
                     'ast': round(ast,1), 'stl': round(stl,1),
                     'blk': round(blk,1), 'tov': tov, 'min': mins
                 }
@@ -767,6 +776,7 @@ def fetch_espn_roster(school_name):
                     'fgp':  round(raw.get('fieldGoalPct', 0) * 100, 1),
                     'tpa':  round(raw.get('threePointFieldGoalsAttempted', 0) / gp, 1),
                     'tpp':  round(raw.get('threePointFieldGoalPct', 0) * 100, 1),
+                    'fta':  round(raw.get('freeThrowsAttempted', 0) / gp, 1),
                     'ftp':  round(raw.get('freeThrowPct', 0) * 100, 1),
                     'pts':  round(raw.get('points', 0) / gp, 1),
                     'reb':  round(raw.get('totalRebounds', 0) / gp, 1),
@@ -936,6 +946,7 @@ def parse_roster(html, platform):
 
         tpa_col = next((i for i,h in enumerate(headers) if h in ['3PTA','3PA']), None)
         to_col  = next((i for i,h in enumerate(headers) if h in ['TO','TOV','TURNOVERS','T/O']), None)
+        fta_col = next((i for i,h in enumerate(headers) if h in ['FTA']), None)
 
         for row in table.find_all('tr'):
             cells = row.find_all('td')
@@ -951,6 +962,7 @@ def parse_roster(html, platform):
             gp = safe_float(cells, 2) or 1
             tpa_raw = safe_float(cells, tpa_col) if tpa_col else 0
             to_raw = safe_float(cells, to_col) if to_col else 0
+            fta_raw = safe_float(cells, fta_col) if fta_col is not None else 0
             # Scan for TO if not found
             if to_raw == 0:
                 for ci in range(max(0, len(cells)-10), len(cells)):
@@ -959,7 +971,8 @@ def parse_roster(html, platform):
                         to_raw = v; break
             overall_data[name.lower()] = {
                 'tpa': round(tpa_raw/gp, 1),
-                'tov': round(to_raw/gp, 1)
+                'tov': round(to_raw/gp, 1),
+                'fta': round(fta_raw/gp, 1),
             }
         break
 
@@ -1020,10 +1033,11 @@ def parse_roster(html, platform):
                             if kparts[0] in nl and kparts[-1] in nl:
                                 extra = overall_data[k]; break
                 if not extra:
-                    extra = {'tpa': 0.0, 'tov': 0.0}
+                    extra = {'tpa': 0.0, 'tov': 0.0, 'fta': 0.0}
                 players.append({
                     'name': name, 'games': int(gp),
-                    'fgp': fgp, 'tpa': extra['tpa'], 'tpp': tpp, 'ftp': ftp,
+                    'fgp': fgp, 'tpa': extra['tpa'], 'tpp': tpp,
+                    'fta': extra.get('fta', 0.0), 'ftp': ftp,
                     'reb': round(reb,1), 'pts': round(pts,1),
                     'ast': round(ast,1), 'stl': round(stl,1),
                     'blk': round(blk,1), 'tov': extra['tov'],
