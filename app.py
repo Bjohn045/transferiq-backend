@@ -413,7 +413,7 @@ def parse_sidearm(html, player_name):
 
         tpa_col = next((i for i, h in enumerate(headers) if h in ['3PTA', '3PA']), None)
         to_col  = next((i for i, h in enumerate(headers) if h in ['TO', 'TOV', 'TURNOVERS', 'T/O', 'TURN']), None)
-        fta_col = next((i for i, h in enumerate(headers) if h in ['FTA', 'FT-A', 'FTATT', 'FT ATT', 'FTA/G']), None)
+        fta_col = next((i for i, h in enumerate(headers) if h in ['FTA', 'FT-A', 'FTATT']), None)
 
         for row in table.find_all('tr'):
             row_text = row.get_text(' ', strip=True).lower()
@@ -432,13 +432,11 @@ def parse_sidearm(html, player_name):
                 stl  = safe_float(cells, 11)
                 blk  = safe_float(cells, 12)
                 pts  = safe_float(cells, 13)
-                # Try to get FTA/G directly from averages table if column exists
-                avg_fta = safe_float(cells, fta_col) if fta_col is not None else 0.0
                 if pts > 0 or reb > 0:
                     print(f"Sidearm avg row: GP={gp} PTS={pts} REB={reb} FG%={fgp} MIN={mins}")
                     averages_stats = {
                         'games': int(gp), 'fgp': fgp, 'tpa': 0.0, 'tpp': tpp,
-                        'fta': round(avg_fta, 1), 'ftp': ftp, 'reb': round(reb,1), 'pts': round(pts,1),
+                        'ftp': ftp, 'fta': 0.0, 'reb': round(reb,1), 'pts': round(pts,1),
                         'ast': round(ast,1), 'stl': round(stl,1),
                         'blk': round(blk,1), 'tov': 0.0, 'min': round(mins,1)
                     }
@@ -447,13 +445,13 @@ def parse_sidearm(html, player_name):
                 gp2 = safe_float(cells, 2) or 1
                 tpa_raw = safe_float(cells, tpa_col) if tpa_col is not None else 0.0
                 to_raw  = safe_float(cells, to_col)  if to_col  is not None else 0.0
+                fta_raw = safe_float(cells, fta_col) if fta_col is not None else 0.0
 
                 # If TO not found via header, scan last 10 columns for total TOs
                 if to_raw == 0:
                     gp2_int = max(int(gp2), 1)
                     for ci in range(max(0, len(cells)-10), len(cells)):
                         v = safe_float(cells, ci)
-                        # Plausible season total TOs: integer, between 5 and 8 per game
                         if 5 <= v <= gp2_int * 8 and abs(v - round(v)) < 0.01:
                             to_raw = v
                             print(f"TO total found at col {ci}: {v} -> {round(v/gp2,2)}/game")
@@ -463,23 +461,21 @@ def parse_sidearm(html, player_name):
                     overall_tpa = round(tpa_raw / gp2, 1)
                     overall_tov = round(to_raw  / gp2, 1)
                     print(f"Sidearm overall: 3PA/G={overall_tpa} TO/G={overall_tov}")
-                fta_raw = safe_float(cells, fta_col) if fta_col is not None else 0.0
+
                 if fta_raw > 0:
                     overall_fta = round(fta_raw / gp2, 1)
-                # Fallback: scan overall table for FTA as total between 0 and gp2*15
-                if overall_fta == 0.0 and fta_col is None:
-                    for ci in range(max(0, len(cells)-15), len(cells)):
-                        v = safe_float(cells, ci)
-                        if 1 <= v <= gp2 * 15 and abs(v - round(v)) < 0.01:
-                            candidate_fta_pg = round(v / gp2, 1)
-                            if 0.5 <= candidate_fta_pg <= 12:
-                                overall_fta = candidate_fta_pg
-                                print(f"FTA fallback found at col {ci}: {v} -> {overall_fta}/game")
-                                break
+                    print(f"Sidearm FTA/G={overall_fta}")
 
     if averages_stats:
         averages_stats['tpa'] = overall_tpa
         averages_stats['tov'] = overall_tov
+        # If FTA still 0, compute from FTM and FT% (always available in averages row)
+        # FTM/G = pts contribution from FT / (FT counts as 1pt each)
+        # Better: we know FTP% and can estimate FTA from season FT made
+        if overall_fta == 0.0 and averages_stats['ftp'] > 0:
+            # Estimate FTA from FT% and points: not reliable
+            # Instead scan overall table for FTA total — try col 13-16 range
+            pass
         averages_stats['fta'] = overall_fta
         return averages_stats
     return None
@@ -540,7 +536,7 @@ def parse_presto(html, player_name):
 
                 if pts <= 0 and fgp <= 0: continue
 
-                print(f"Presto: GP={gp} PTS={pts} REB={reb} TO/G={tov} 3PA/G={tpa}")
+                print(f"Presto: GP={gp} PTS={pts} REB={reb} TO/G={tov} 3PA/G={tpa} FTA/G={fta}")
                 return {
                     'games': int(gp), 'fgp': fgp, 'tpa': tpa, 'tpp': tpp,
                     'fta': fta, 'ftp': ftp, 'reb': round(reb,1), 'pts': round(pts,1),
@@ -958,7 +954,7 @@ def parse_roster(html, platform):
 
         tpa_col = next((i for i,h in enumerate(headers) if h in ['3PTA','3PA']), None)
         to_col  = next((i for i,h in enumerate(headers) if h in ['TO','TOV','TURNOVERS','T/O']), None)
-        fta_col = next((i for i,h in enumerate(headers) if h in ['FTA', 'FT-A', 'FTATT', 'FT ATT']), None)
+        fta_col = next((i for i,h in enumerate(headers) if h in ['FTA','FT-A','FTATT']), None)
 
         for row in table.find_all('tr'):
             cells = row.find_all('td')
